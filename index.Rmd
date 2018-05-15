@@ -1,0 +1,146 @@
+---
+title: 'MSCS 264: Homework #12'
+subtitle: 'Due Thurs May 10 at 11:59 PM'
+output: md_document
+---
+
+You should submit a knitted pdf file on Moodle, but be sure to show all of your R code, in addition to your output, plots, and written responses.
+
+```{r, setup, include=FALSE}
+library(tidyverse) 
+library(stringr)
+```
+
+##Factors, Functions, and Vectors
+
+1. Given the output below, write out the elements of the vector `y`.
+
+```{r}
+#> sort(y)
+#[1] -2 -2 -1  0  3  4  4  7
+#
+#> order(y)
+#[1] 1 8 4 5 6 2 7 3
+```
+
+```{r}
+y <- c(-2, 4, 7, -1, 0, 3, 4, -2)
+sort(y)
+order(y)
+```
+
+2. Explain what the following function does and demonstrate by running `foo1(x)` with a few appropriately chosen vectors `x`.
+
+```{r}
+foo1 <- function(x) {
+  diff <- x[-1] - x[1:(length(x) - 1)]
+  length(which(diff < 0))
+}
+```
+
+foo1 finds the differnce between successive values of `x` and counts how many of those differences are negative (e.g. drop from the 5th value to the 6th)
+
+3. Write a function using `if`, `else if`, and `else` to print out "good morning" if it's before 12 PM, "good afternoon" if it's between 12 PM and 5 PM, and "good evening" if it's after 5 PM.  Your function should work if you input a time like: `greet(time = "2018-05-03 17:38:01 CDT")` or if you input the current time with `Sys.time()`.
+
+```{r}
+hours <- parse_number(str_sub(Sys.time(), 12, 13))
+greet <- function(time = Sys.time()) {
+  hour <- parse_number(str_sub(time, 12, 13))
+  if (hour < 12) {
+    print("good morning")
+  } else if (hour < 17) {
+    print("good afternoon")
+  } else {
+    print("good evening")
+  }
+}
+greet()
+greet(time = "2018-05-03 17:38:01 CDT")
+```
+
+4. Write a for loop to compute the mean of every column in `mtcars`.
+
+```{r}
+output <- vector("double", ncol(mtcars))  # 1. output
+for (i in seq_along(mtcars)) {            # 2. sequence
+  output[[i]] <- mean(mtcars[[i]])        # 3. body
+}
+output
+```
+
+##Airbnb Data
+
+5. `airbnbData.csv` contains data scraped on 2022 airbnb units in the Boston area (65 variables).  The code below shows a function which returns a set of summary statistics for a single variable.  Note a couple of strange elements (e.g. `enquo` and `!!var`) that were needed to get around the way tibbles and dplyr handle variable names (for way more detail than you probably want on this issue, see https://cran.r-project.org/web/packages/dplyr/vignettes/programming.html). 
+
+a) Create a new function called `eda2stats` which produces the same set of summary statistics by group.  Show your function works by running `eda2stats(airbnb.df, Price, S_PropType)`.
+
+b) Run `eda2stats` again after forming a new Property Type variable with only 4 levels: Apartment, House, Bed & Breakfast, and Other.
+
+```{r}
+airbnb.df <- read.csv("datasets/airbnbData.csv")
+airbnb.df <- as.tibble(airbnb.df) 
+
+# First remove 5 units with prices over 1000
+airbnb.df <- airbnb.df %>%
+  filter(Price < 1000)
+
+# Find summary stats on a single variable
+eda1stats <- function(df, var) {
+  var <- enquo(var)
+  df %>%
+    summarise(mean = mean(!!var, na.rm = TRUE),
+              median = median(!!var, na.rm = TRUE),
+              sd = sd(!!var, na.rm = TRUE),
+              iqr = IQR(!!var, na.rm = TRUE),
+              n = n())
+}
+eda1stats(airbnb.df, Price)
+
+# Find summary stats by a grouping variable
+eda2stats <- function(df, var, groups) {
+  var <- enquo(var)
+  groups <- enquo(groups)
+  df %>%
+    group_by(!!groups) %>%
+    summarise(mean = mean(!!var, na.rm = TRUE),
+              median = median(!!var, na.rm = TRUE),
+              sd = sd(!!var, na.rm = TRUE),
+              iqr = IQR(!!var, na.rm = TRUE),
+              n = n())
+}
+eda2stats(airbnb.df, Price, S_PropType)
+
+# Create fewer levels of the grouping variable
+airbnb.df <- airbnb.df %>%
+  mutate(S_PropType2 = fct_lump(S_PropType, n = 3))
+eda2stats(airbnb.df, Price, S_PropType2)
+```
+
+6. Use `stringr` functions to extract at least one feature from `AboutListing` and create a plot to determine if that feature is related to `Price`.  A couple of examples are illustrated below.
+
+```{r warning=FALSE}
+# Analyze features of AboutListing description
+foo1 <- airbnb.df$AboutListing[5]
+str_length(foo1)
+str_count(foo1, "!")
+str_detect(foo1, "[Ww]alk")
+str_length(airbnb.df$AboutListing)[1:50]   # missings seems to have length 7
+
+airbnb.df <- airbnb.df %>%
+  mutate(NumExclaim = str_count(AboutListing, "!"),
+         PctExclaim = ifelse(str_length(AboutListing) == 7, NA, 
+           str_count(AboutListing, "!") / str_length(AboutListing)),
+         Walk = str_detect(AboutListing, "[Ww]alk"))
+airbnb.df %>% group_by(Walk) %>% tally()
+airbnb.df %>% group_by(NumExclaim) %>% tally()
+with(airbnb.df, summary(PctExclaim))
+
+ggplot(airbnb.df, aes(x = Walk, y = Price)) +
+  geom_boxplot() + coord_flip()
+ggplot(airbnb.df, aes(x = NumExclaim, y = Price)) +
+  geom_point(size = 0.25) + 
+  geom_smooth(method = "lm", colour = "red")
+ggplot(airbnb.df, aes(x = PctExclaim, y = Price)) +
+  geom_point(size = 0.25) + 
+  geom_smooth(method = "loess", colour = "red")
+```
